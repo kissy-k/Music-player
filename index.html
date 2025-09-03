@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hafsa's • Offline Music Player</title>
+  <style>
+    :root{
+      --bg:#0f1115;--panel:#171922;--panel-2:#1e2130;--text:#e6e7ea;--muted:#9aa3b2;--brand:#de5cff;--brand-2:#e185ff;--accent:#cb23d1;--danger:#d75dff;
+      --radius:16px;--radius-sm:12px;--shadow:0 8px 30px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(160deg,#0e1014,#111322 60%,#0b0d12);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:inherit}
+
+    .app{display:grid;grid-template-columns:320px 1fr;gap:16px;min-height:100vh;padding:16px}
+    @media (max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}}
+
+    .sidebar{background:var(--panel);border:1px solid #23263a;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:14px}
+    .brand{display:flex;align-items:center;gap:10px}
+    .logo{width:34px;height:34px;border-radius:10px;background:conic-gradient(from 220deg,var(--brand),var(--brand-2),#5ad7ff,#73ffa7,var(--brand));box-shadow:0 6px 16px rgba(255, 92, 255, 0.4)}
+    .brand h1{font-size:18px;margin:0;font-weight:700}
+    .muted{color:var(--muted)}
+
+    .section{background:var(--panel-2);border:1px solid #2a2e43;border-radius:var(--radius-sm);padding:12px}
+    .section h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:#cfd5e4}
+
+    .file-row{display:flex;gap:8px;flex-wrap:wrap}
+    input[type="file"]{flex:1 1 220px;background:#121421;border:1px dashed #3a3f59;padding:10px;border-radius:12px;color:var(--muted)}
+    .btn{appearance:none;border:0;background:var(--brand);color:white;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer;box-shadow:0 8px 18px rgba(241, 92, 255, 0.35);transition:transform .05s ease}
+    .btn:active{transform:translateY(1px)}
+    .btn.secondary{background:#2a2f45;color:#d6dcf1;box-shadow:none}
+    .btn.ghost{background:transparent;border:1px solid #303651;color:#d6dcf1;box-shadow:none}
+    .btn.danger{background:var(--danger)}
+
+    .main{background:var(--panel);border:1px solid #23263a;border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-rows:auto 1fr auto}
+
+    .now{display:grid;grid-template-columns:220px 1fr;gap:16px;padding:16px;border-bottom:1px solid #23263a}
+    @media (max-width:700px){.now{grid-template-columns:1fr;grid-auto-rows:auto}}
+    .cover{width:100%;aspect-ratio:1;border-radius:14px;background:#0a0c12;border:1px solid #222843;display:grid;place-items:center;overflow:hidden}
+    .cover img{width:100%;height:100%;object-fit:cover}
+
+    .meta h2{margin:0 0 6px;font-size:22px}
+    .meta .artist{color:#cdd3e8;margin:0 0 12px}
+
+    .bar{display:flex;align-items:center;gap:10px}
+    .time{font-variant-numeric:tabular-nums;color:#c7cbe0;font-size:12px}
+    input[type="range"]{flex:1;appearance:none;height:6px;border-radius:999px;background:#2c3150;outline:none}
+    input[type="range"]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:white;border:2px solid var(--brand);box-shadow:0 0 0 4px rgba(255, 92, 231, 0.22)}
+    input[type="range"]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:white;border:2px solid var(--brand)}
+
+    .controls{display:flex;align-items:center;gap:10px}
+    .icon-btn{width:40px;height:40px;border-radius:50%;border:1px solid #303651;background:#1a1f35;display:grid;place-items:center;cursor:pointer}
+    .icon-btn svg{width:18px;height:18px;fill:#e7e9f7}
+    .play{width:54px;height:54px;border-radius:50%;background:var(--brand);border:none;box-shadow:0 10px 20px rgba(255, 92, 252, 0.35)}
+
+    .opts{display:flex;gap:12px;align-items:center}
+    .opts label{font-size:12px;color:#cfd5e4}
+
+    .queue{padding:0 16px 16px;overflow:auto}
+    .list{display:flex;flex-direction:column;gap:6px}
+    .row{display:grid;grid-template-columns:28px 1fr 110px 80px 90px;gap:12px;align-items:center;padding:8px 10px;border-radius:12px;border:1px solid #2a2e43;background:#161a2a}
+    @media (max-width:800px){.row{grid-template-columns:28px 1fr 80px 70px 70px}}
+    .row .idx{color:#a8b0c7;text-align:center}
+    .row .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .row .artist{color:#aeb6d1}
+    .row .actions{display:flex;gap:6px;justify-content:flex-end}
+
+    dialog{border:none;background:#141828;color:var(--text);border:1px solid #2a2e43;border-radius:16px;box-shadow:var(--shadow);padding:0;max-width:520px}
+    dialog .dlg{padding:16px;display:grid;gap:10px}
+    dialog .dlg h4{margin:0 0 6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .grid input,.grid textarea{width:100%;padding:10px;border-radius:12px;border:1px solid #303651;background:#0f1322;color:#e6e7ea}
+    .dlg .footer{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+
+    .small{font-size:12px;color:#aab1c9}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <h1>Hafsa's <span class="muted">— Offline Player</span></h1>
+      </div>
+
+      <div class="section">
+        <h3>Import your stuff</h3>
+        <div class="file-row">
+          <input id="fileAudio" type="file" accept="audio/*" multiple>
+          <input id="fileCovers" type="file" accept="image/*" multiple>
+          <button class="btn" id="btnImport">Add to Library</button>
+        </div>
+        <p class="small">Tip: You can edit title/artist and set covers per track after importing.</p>
+      </div>
+
+      <div class="section">
+        <h3>Library tools</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn secondary" id="btnShuffle">Shuffle</button>
+          <button class="btn ghost" id="btnClear">Clear Library</button>
+          <button class="btn ghost" id="btnExport">Export Library</button>
+          <input type="file" id="fileImportJson" accept="application/json" style="display:none">
+          <button class="btn ghost" id="btnImportJson">Import Library</button>
+        </div>
+        <p class="small">Your songs and covers are stored offline using IndexedDB (on-device). Export/Import lets you back them up.</p>
+      </div>
+    </aside>
+
+    <section class="main">
+      <div class="now">
+        <div class="cover"><img id="cover" alt="Album cover"/></div>
+        <div class="meta">
+          <h2 id="trackTitle">No track loaded</h2>
+          <div class="artist" id="trackArtist">—</div>
+
+          <div class="bar" style="margin:10px 0 6px">
+            <span class="time" id="cur">0:00</span>
+            <input id="seek" type="range" min="0" max="100" value="0" step="1"/>
+            <span class="time" id="dur">0:00</span>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div class="controls">
+              <button class="icon-btn" id="btnPrev" title="Prev" aria-label="Previous">
+                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6V6Zm3 6V6l8 6-8 6v-6Z"/></svg>
+              </button>
+              <button class="play" id="btnPlay" title="Play/Pause" aria-label="Play or pause">
+                <svg id="iconPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg>
+              </button>
+              <button class="icon-btn" id="btnNext" title="Next" aria-label="Next">
+                <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2V6ZM5 12l8-6v12l-8-6Z"/></svg>
+              </button>
+            </div>
+            <div class="opts">
+              <button class="icon-btn" id="btnShuffleToggle" title="Shuffle">
+                <svg viewBox="0 0 24 24"><path d="M17 3h4v4h-2V5h-2V3ZM3 6h5.59l3.7 3.7-1.41 1.41L6.59 8H3V6Zm18 12v4h-4v-2h2v-2h2Zm-5.41-9.7 1.41-1.41L21 9.5V11h-1.5l-3.91-2.7ZM3 16h3.59l3-3 1.41 1.41-3.7 3.7H3v-2Zm12.09 0 1.41-1.41L21 16.5V18h-1.5l-4.41-2Z"/></svg>
+              </button>
+              <button class="icon-btn" id="btnRepeatToggle" title="Repeat">
+                <svg viewBox="0 0 24 24"><path d="M7 7h11v3l4-4-4-4v3H6a5 5 0 0 0-5 5v2h2V10a3 3 0 0 1 3-3Zm10 10H6v-3l-4 4 4 4v-3h12a5 5 0 0 0 5-5v-2h-2v2a3 3 0 0 1-3 3Z"/></svg>
+              </button>
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#cfd5e4" d="M4 9v6h4l5 5V4L8 9H4Z"/></svg>
+                <input id="vol" type="range" min="0" max="1" step="0.01" value="1"/>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="queue">
+        <div class="list" id="list"></div>
+      </div>
+
+      <div style="border-top:1px solid #23263a;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
+        <div class="small">Media keys + lock screen controls supported.</div>
+        <div class="small">GirlyPub v1.0</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Edit Track Dialog -->
+  <dialog id="dlgTrack">
+    <form method="dialog" class="dlg">
+      <h4>Edit track</h4>
+      <div class="grid">
+        <div>
+          <label class="small">Title</label>
+          <input id="editTitle" placeholder="Song title"/>
+        </div>
+        <div>
+          <label class="small">Artist</label>
+          <input id="editArtist" placeholder="Artist"/>
+        </div>
+        <div style="grid-column:1/-1">
+          <label class="small">Album (optional)</label>
+          <input id="editAlbum" placeholder="Album"/>
+        </div>
+        <div style="grid-column:1/-1">
+          <label class="small">Cover image (optional)</label>
+          <input id="editCover" type="file" accept="image/*"/>
+        </div>
+      </div>
+      <div class="footer">
+        <button class="btn ghost" value="cancel">Cancel</button>
+        <button class="btn" id="btnSaveTrack" value="default">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  // =========== Minimal offline library using IndexedDB ==========
+  const DB_NAME = 'girlypub-db';
+  const DB_STORE = 'tracks';
+  let db;
+
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME,1);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains(DB_STORE)){
+          const store = db.createObjectStore(DB_STORE,{keyPath:'id',autoIncrement:true});
+          store.createIndex('createdAt','createdAt');
+        }
+      };
+      req.onsuccess = ()=>{db=req.result; resolve(db)};
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  function putTrack(track){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).put(track).onsuccess=(ev)=>resolve(ev.target.result);
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+  function getAllTracks(){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(DB_STORE,'readonly');
+      const req=tx.objectStore(DB_STORE).getAll();
+      req.onsuccess=()=>resolve(req.result||[]);
+      req.onerror=()=>reject(req.error);
+    });
+  }
+  function deleteTrack(id){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).delete(id).onsuccess=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+  function clearDB(){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).clear().onsuccess=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+
+  // =========== State ==========
+  const $ = (sel)=>document.querySelector(sel);
+  const listEl = $('#list');
+  const audio = new Audio();
+  audio.preload = 'metadata';
+  let library = []; // array of track objects from DB
+  let queue = [];   // play order as indices into library
+  let current = -1; // index within queue
+  let shuffle = false;
+  let repeat = false;
+
+  function toTime(secs){
+    secs = Math.max(0, Math.floor(secs||0));
+    const m = Math.floor(secs/60); const s = (secs%60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  function renderList(){
+    listEl.innerHTML='';
+    library.forEach((t,i)=>{
+      const row = document.createElement('div');
+      row.className='row';
+      row.dataset.idx=i;
+      row.innerHTML=`
+        <div class="idx">${i+1}</div>
+        <div class="title">${t.title||'Untitled'}<div class="small">${t.album? t.album+' • ': ''}<span class="artist">${t.artist||'Unknown'}</span></div></div>
+        <div class="small">${toTime(t.duration||0)}</div>
+        <div class="actions">
+          <button class="btn secondary btnPlayRow">Play</button>
+          <button class="btn ghost btnEdit">Edit</button>
+        </div>
+        <div class="actions">
+          <button class="btn ghost btnUp">↑</button>
+          <button class="btn ghost btnDown">↓</button>
+          <button class="btn danger btnDel">Delete</button>
+        </div>`;
+      listEl.appendChild(row);
+    });
+  }
+
+  function updateNowPlaying(){
+    const t = library[ queue[current] ];
+    if(!t){ $('#trackTitle').textContent='No track loaded'; $('#trackArtist').textContent='—'; $('#cover').src=''; return; }
+    $('#trackTitle').textContent = t.title || 'Untitled';
+    $('#trackArtist').textContent = t.artist || 'Unknown';
+    if(t.coverBlob){ $('#cover').src = URL.createObjectURL(t.coverBlob); }
+    else { $('#cover').src=''; }
+  }
+
+  async function loadAndPlay(idxInQueue){
+    current = idxInQueue;
+    const t = library[ queue[current] ];
+    if(!t) return;
+    audio.src = URL.createObjectURL(t.audioBlob);
+    try { await audio.play(); } catch(e){ /* autoplay might block until user gesture */ }
+    $('#iconPlay').innerHTML = '<path d="M8 5h4v14H8zM14 5h4v14h-4z"/>';
+    updateNowPlaying();
+  }
+
+  function nextTrack(){
+    if(shuffle){ current = Math.floor(Math.random()*queue.length); }
+    else { current = (current+1) % queue.length; }
+    loadAndPlay(current);
+  }
+  function prevTrack(){
+    if(shuffle){ current = Math.floor(Math.random()*queue.length); }
+    else { current = (current-1+queue.length) % queue.length; }
+    loadAndPlay(current);
+  }
+
+  function rebuildQueue(){
+    queue = library.map((_,i)=>i);
+  }
+
+  async function refreshFromDB(){
+    library = await getAllTracks();
+    rebuildQueue();
+    renderList();
+  }
+
+  // ====== Import flow ======
+  const audioInput = $('#fileAudio');
+  const coverInput = $('#fileCovers');
+  const btnImport = $('#btnImport');
+
+  btnImport.addEventListener('click', async ()=>{
+    const audioFiles = [...(audioInput.files||[])];
+    if(!audioFiles.length){ alert('Pick some audio files first.'); return; }
+
+    // Try to map covers by filename base if provided
+    const covers = {};
+    [...(coverInput.files||[])].forEach(img=>{
+      const base = img.name.replace(/\.[^.]+$/,'').toLowerCase();
+      covers[base] = img; // simple map by basename
+    });
+
+    for(const f of audioFiles){
+      const title = f.name.replace(/\.[^.]+$/,'');
+      const artist = '';
+      const audioBlob = new Blob([await f.arrayBuffer()], {type: f.type || 'audio/mpeg'});
+
+      let coverBlob=null;
+      const base=f.name.replace(/\.[^.]+$/,'').toLowerCase();
+      if(covers[base]){
+        coverBlob = new Blob([await covers[base].arrayBuffer()], {type: covers[base].type||'image/jpeg'});
+      }
+
+      // Preload duration
+      const tmp = document.createElement('audio');
+      const url = URL.createObjectURL(audioBlob);
+      const duration = await new Promise(res=>{ tmp.src=url; tmp.addEventListener('loadedmetadata',()=>{res(tmp.duration||0); URL.revokeObjectURL(url);},{once:true}); setTimeout(()=>res(0),4000); });
+
+      await putTrack({ title, artist, album:'', audioBlob, coverBlob, duration, createdAt: Date.now() });
+    }
+    audioInput.value=''; coverInput.value='';
+    await refreshFromDB();
+    if(queue.length && current===-1){ loadAndPlay(0); }
+  });
+
+  // ====== Row actions ======
+  listEl.addEventListener('click', async (e)=>{
+    const row = e.target.closest('.row');
+    if(!row) return;
+    const idx = +row.dataset.idx;
+    const track = library[idx];
+    if(e.target.classList.contains('btnPlayRow')){
+      const qIndex = queue.indexOf(idx);
+      if(qIndex!==-1) loadAndPlay(qIndex);
+    } else if(e.target.classList.contains('btnDel')){
+      if(confirm('Delete this track from library?')){ await deleteTrack(track.id); await refreshFromDB(); }
+    } else if(e.target.classList.contains('btnEdit')){
+      openEditDialog(idx);
+    } else if(e.target.classList.contains('btnUp')){
+      if(idx>0){ const a=library[idx-1]; library[idx-1]=library[idx]; library[idx]=a; await rewriteLibrary(); }
+    } else if(e.target.classList.contains('btnDown')){
+      if(idx<library.length-1){ const a=library[idx+1]; library[idx+1]=library[idx]; library[idx]=a; await rewriteLibrary(); }
+    }
+  });
+
+  async function rewriteLibrary(){
+    // Brutal but simple: export all, clear, reinsert in new order to persist order
+    const copy = [...library];
+    await clearDB();
+    for(const t of copy){ const {id,...rest}=t; await putTrack(rest); }
+    await refreshFromDB();
+  }
+
+  // ====== Player wiring ======
+  $('#btnPlay').addEventListener('click',()=>{
+    if(audio.paused){ audio.play(); $('#iconPlay').innerHTML='<path d="M8 5h4v14H8zM14 5h4v14h-4z"/>'; }
+    else { audio.pause(); $('#iconPlay').innerHTML='<path d="M8 5v14l11-7L8 5Z"/>'; }
+  });
+  $('#btnNext').addEventListener('click',nextTrack);
+  $('#btnPrev').addEventListener('click',prevTrack);
+  $('#btnShuffle').addEventListener('click',()=>{ shuffle=true; alert('Shuffled play order.'); });
+  $('#btnShuffleToggle').addEventListener('click',()=>{ shuffle=!shuffle; alert('Shuffle '+(shuffle?'ON':'OFF')); });
+  $('#btnRepeatToggle').addEventListener('click',()=>{ repeat=!repeat; alert('Repeat '+(repeat?'ON':'OFF')); });
+
+  $('#seek').addEventListener('input',()=>{
+    if(!isFinite(audio.duration)) return;
+    audio.currentTime = (audio.duration * (+$('#seek').value))/100;
+  });
+  $('#vol').addEventListener('input',()=>{ audio.volume = +$('#vol').value; });
+
+  audio.addEventListener('timeupdate',()=>{
+    $('#cur').textContent = toTime(audio.currentTime);
+    $('#dur').textContent = toTime(audio.duration||0);
+    if(isFinite(audio.duration)) $('#seek').value = ((audio.currentTime / audio.duration) * 100) || 0;
+  });
+  audio.addEventListener('ended',()=>{
+    if(repeat){ audio.currentTime=0; audio.play(); return; }
+    nextTrack();
+  });
+
+  // ====== Edit dialog ======
+  const dlg = $('#dlgTrack');
+  let editIndex = -1;
+  function openEditDialog(idx){
+    editIndex = idx;
+    const t = library[idx];
+    $('#editTitle').value = t.title||'';
+    $('#editArtist').value = t.artist||'';
+    $('#editAlbum').value = t.album||'';
+    $('#editCover').value = '';
+    dlg.showModal();
+  }
+  $('#btnSaveTrack').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const t = library[editIndex];
+    if(!t) return dlg.close();
+    t.title = $('#editTitle').value.trim() || t.title;
+    t.artist = $('#editArtist').value.trim() || t.artist;
+    t.album = $('#editAlbum').value.trim() || t.album;
+    const f = $('#editCover').files[0];
+    if(f){ t.coverBlob = new Blob([await f.arrayBuffer()], {type:f.type||'image/jpeg'}); }
+    await putTrack(t);
+    await refreshFromDB();
+    dlg.close();
+  });
+
+  // ====== Export / Import library as JSON (warning: large files) ======
+  $('#btnExport').addEventListener('click', async ()=>{
+    const tracks = await getAllTracks();
+    // Serialize blobs as base64
+    const enc = async (blob)=> blob? await blob.arrayBuffer().then(buf=>btoa(String.fromCharCode(...new Uint8Array(buf)))):null;
+    const out = [];
+    for(const t of tracks){
+      out.push({
+        title:t.title, artist:t.artist, album:t.album, duration:t.duration, createdAt:t.createdAt,
+        audioB64: await enc(t.audioBlob), audioType: t.audioBlob.type,
+        coverB64: await enc(t.coverBlob), coverType: t.coverBlob? t.coverBlob.type: null
+      });
+    }
+    const blob = new Blob([JSON.stringify(out)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'),{download:'girlypub-library.json', href:url});
+    a.click(); URL.revokeObjectURL(url);
+  });
+  $('#btnImportJson').addEventListener('click',()=> $('#fileImportJson').click());
+  $('#fileImportJson').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const data = JSON.parse(await f.text());
+    for(const t of data){
+      const dec = (b64,type)=> b64? new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:type||'application/octet-stream'}):null;
+      await putTrack({ title:t.title, artist:t.artist, album:t.album, duration:t.duration, createdAt:t.createdAt||Date.now(),
+        audioBlob: dec(t.audioB64, t.audioType), coverBlob: dec(t.coverB64, t.coverType) });
+    }
+    await refreshFromDB();
+    e.target.value='';
+  });
+
+  // ====== Clear library ======
+  $('#btnClear').addEventListener('click', async ()=>{
+    if(confirm('This will delete all tracks stored on this device for GirlyPub. Continue?')){
+      await clearDB(); await refreshFromDB(); current=-1; audio.pause(); audio.removeAttribute('src'); updateNowPlaying();
+    }
+  });
+
+  // ====== Media Session (lock screen & hardware keys) ======
+  if('mediaSession' in navigator){
+    const setHandlers=()=>{
+      navigator.mediaSession.setActionHandler('play',()=>audio.play());
+      navigator.mediaSession.setActionHandler('pause',()=>audio.pause());
+      navigator.mediaSession.setActionHandler('previoustrack',prevTrack);
+      navigator.mediaSession.setActionHandler('nexttrack',nextTrack);
+      navigator.mediaSession.setActionHandler('seekto', (d)=>{ audio.currentTime=d.seekTime||0; });
+    };
+    audio.addEventListener('play',()=>{ navigator.mediaSession.playbackState='playing'; setHandlers(); updateMetadata(); });
+    audio.addEventListener('pause',()=>{ navigator.mediaSession.playbackState='paused'; updateMetadata(); });
+  }
+  function updateMetadata(){
+    if(!('mediaSession' in navigator)) return;
+    const t = library[ queue[current] ];
+    if(!t) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: t.title||'Untitled', artist: t.artist||'Unknown', album: t.album||'',
+      artwork: t.coverBlob? [{src: URL.createObjectURL(t.coverBlob), sizes:'512x512', type: t.coverBlob.type}]:[]
+    });
+  }
+
+  // ====== Boot ======
+  (async ()=>{
+    await openDB();
+    await refreshFromDB();
+    if(queue.length){ loadAndPlay(0); }
+  })();
+
+  if ("mediaSession" in navigator) {
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: "My Song",
+    artist: "My Artist",
+    album: "My Album",
+    artwork: [{ src: "cover.jpg", sizes: "512x512", type: "image/jpg" }]
+  });
+
+  navigator.mediaSession.setActionHandler("play", () => {
+    audio.play();
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    audio.pause();
+  });
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js")
+    .then(() => console.log("Service Worker registered!"))
+    .catch(err => console.log("Service Worker failed:", err));
+}
+
+if ("mediaSession" in navigator) {
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: "My Song",
+    artist: "My Artist",
+    album: "My Album",
+    artwork: [
+      { src: "icon-192.png", sizes: "192x192", type: "image/png" }
+    ]
+  });
+
+  navigator.mediaSession.setActionHandler("play", () => {
+    document.querySelector("audio").play();
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    document.querySelector("audio").pause();
+  });
+}
+
+  </script>
+</body>
+</html>
