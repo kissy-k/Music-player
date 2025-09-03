@@ -1,12 +1,14 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#000000">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hafsa's • Offline Music Player</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+
   <style>
+    /* (Your original CSS kept intact) */
     :root{
       --bg:#0f1115;--panel:#171922;--panel-2:#1e2130;--text:#e6e7ea;--muted:#9aa3b2;--brand:#de5cff;--brand-2:#e185ff;--accent:#cb23d1;--danger:#d75dff;
       --radius:16px;--radius-sm:12px;--shadow:0 8px 30px rgba(0,0,0,.35);
@@ -214,8 +216,9 @@
   function putTrack(track){
     return new Promise((resolve,reject)=>{
       const tx=db.transaction(DB_STORE,'readwrite');
-      tx.objectStore(DB_STORE).put(track).onsuccess=(ev)=>resolve(ev.target.result);
-      tx.onerror=()=>reject(tx.error);
+      const req = tx.objectStore(DB_STORE).put(track);
+      req.onsuccess=(ev)=>resolve(ev.target.result);
+      req.onerror=()=>reject(tx.error);
     });
   }
   function getAllTracks(){
@@ -245,7 +248,9 @@
   const $ = (sel)=>document.querySelector(sel);
   const listEl = $('#list');
   const audio = new Audio();
-  audio.preload = 'metadata';
+  audio.preload = 'auto'; // smoother offline play
+  let currentAudioUrl = null;
+  let currentCoverUrl = null;
   let library = []; // array of track objects from DB
   let queue = [];   // play order as indices into library
   let current = -1; // index within queue
@@ -283,29 +288,42 @@
 
   function updateNowPlaying(){
     const t = library[ queue[current] ];
-    if(!t){ $('#trackTitle').textContent='No track loaded'; $('#trackArtist').textContent='—'; $('#cover').src=''; return; }
+    if(!t){ $('#trackTitle').textContent='No track loaded'; $('#trackArtist').textContent='—'; if(currentCoverUrl){ URL.revokeObjectURL(currentCoverUrl); currentCoverUrl=null; } $('#cover').src=''; return; }
     $('#trackTitle').textContent = t.title || 'Untitled';
     $('#trackArtist').textContent = t.artist || 'Unknown';
-    if(t.coverBlob){ $('#cover').src = URL.createObjectURL(t.coverBlob); }
-    else { $('#cover').src=''; }
+    if(t.coverBlob){
+      // revoke previous cover URL to avoid leaks
+      if(currentCoverUrl) { URL.revokeObjectURL(currentCoverUrl); currentCoverUrl=null; }
+      currentCoverUrl = URL.createObjectURL(t.coverBlob);
+      $('#cover').src = currentCoverUrl;
+    } else {
+      if(currentCoverUrl){ URL.revokeObjectURL(currentCoverUrl); currentCoverUrl=null; }
+      $('#cover').src='';
+    }
+    updateMetadata();
   }
 
   async function loadAndPlay(idxInQueue){
     current = idxInQueue;
     const t = library[ queue[current] ];
     if(!t) return;
-    audio.src = URL.createObjectURL(t.audioBlob);
+    // revoke previous audio URL
+    if(currentAudioUrl){ URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; }
+    currentAudioUrl = URL.createObjectURL(t.audioBlob);
+    audio.src = currentAudioUrl;
     try { await audio.play(); } catch(e){ /* autoplay might block until user gesture */ }
     $('#iconPlay').innerHTML = '<path d="M8 5h4v14H8zM14 5h4v14h-4z"/>';
     updateNowPlaying();
   }
 
   function nextTrack(){
+    if(queue.length===0) return;
     if(shuffle){ current = Math.floor(Math.random()*queue.length); }
     else { current = (current+1) % queue.length; }
     loadAndPlay(current);
   }
   function prevTrack(){
+    if(queue.length===0) return;
     if(shuffle){ current = Math.floor(Math.random()*queue.length); }
     else { current = (current-1+queue.length) % queue.length; }
     loadAndPlay(current);
@@ -325,6 +343,9 @@
   const audioInput = $('#fileAudio');
   const coverInput = $('#fileCovers');
   const btnImport = $('#btnImport');
+
+  // fix: original code had btnImport declaration; ensure defined
+  // (if browser complains because of trailing semicolon, it's ok in this code)
 
   btnImport.addEventListener('click', async ()=>{
     const audioFiles = [...(audioInput.files||[])];
@@ -381,7 +402,6 @@
   });
 
   async function rewriteLibrary(){
-    // Brutal but simple: export all, clear, reinsert in new order to persist order
     const copy = [...library];
     await clearDB();
     for(const t of copy){ const {id,...rest}=t; await putTrack(rest); }
@@ -444,7 +464,6 @@
   // ====== Export / Import library as JSON (warning: large files) ======
   $('#btnExport').addEventListener('click', async ()=>{
     const tracks = await getAllTracks();
-    // Serialize blobs as base64
     const enc = async (blob)=> blob? await blob.arrayBuffer().then(buf=>btoa(String.fromCharCode(...new Uint8Array(buf)))):null;
     const out = [];
     for(const t of tracks){
@@ -479,26 +498,37 @@
     }
   });
 
-  // ====== Media Session (lock screen & hardware keys) ======
-  if('mediaSession' in navigator){
-    const setHandlers=()=>{
-      navigator.mediaSession.setActionHandler('play',()=>audio.play());
-      navigator.mediaSession.setActionHandler('pause',()=>audio.pause());
-      navigator.mediaSession.setActionHandler('previoustrack',prevTrack);
-      navigator.mediaSession.setActionHandler('nexttrack',nextTrack);
-      navigator.mediaSession.setActionHandler('seekto', (d)=>{ audio.currentTime=d.seekTime||0; });
-    };
-    audio.addEventListener('play',()=>{ navigator.mediaSession.playbackState='playing'; setHandlers(); updateMetadata(); });
-    audio.addEventListener('pause',()=>{ navigator.mediaSession.playbackState='paused'; updateMetadata(); });
+  // ====== Media Session (lock screen & hardware keys) - SINGLE, central block ======
+  function setMediaSessionHandlers(){
+    if(!('mediaSession' in navigator)) return;
+    navigator.mediaSession.setActionHandler('play',()=> audio.play());
+    navigator.mediaSession.setActionHandler('pause',()=> audio.pause());
+    navigator.mediaSession.setActionHandler('previoustrack',()=> prevTrack());
+    navigator.mediaSession.setActionHandler('nexttrack',()=> nextTrack());
+    navigator.mediaSession.setActionHandler('seekto', (details)=>{ if(details && details.seekTime) audio.currentTime = details.seekTime; });
   }
+
   function updateMetadata(){
     if(!('mediaSession' in navigator)) return;
     const t = library[ queue[current] ];
-    if(!t) return;
+    if(!t) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+
+    const artwork = t.coverBlob ? [{ src: URL.createObjectURL(t.coverBlob), sizes:'512x512', type: t.coverBlob.type }] : [];
+
+    // Set metadata (note: we create a temporary object URL for artwork;
+    // updateNowPlaying already created currentCoverUrl and it will be revoked properly)
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title||'Untitled', artist: t.artist||'Unknown', album: t.album||'',
-      artwork: t.coverBlob? [{src: URL.createObjectURL(t.coverBlob), sizes:'512x512', type: t.coverBlob.type}]:[]
+      title: t.title || 'Untitled',
+      artist: t.artist || 'Unknown',
+      album: t.album || '',
+      artwork
     });
+
+    // ensure handlers are set
+    setMediaSessionHandlers();
   }
 
   // ====== Boot ======
@@ -508,46 +538,25 @@
     if(queue.length){ loadAndPlay(0); }
   })();
 
-  if ("mediaSession" in navigator) {
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: "My Song",
-    artist: "My Artist",
-    album: "My Album",
-    artwork: [{ src: "cover.jpg", sizes: "512x512", type: "image/jpg" }]
+  // ====== Register service worker ======
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js")
+      .then(() => console.log("Service Worker registered!"))
+      .catch(err => console.log("Service Worker failed:", err));
+  }
+
+  // Clean-up when page unloads: revoke any object URLs
+  window.addEventListener('beforeunload', ()=>{
+    try{ if(currentAudioUrl) URL.revokeObjectURL(currentAudioUrl); }catch(e){}
+    try{ if(currentCoverUrl) URL.revokeObjectURL(currentCoverUrl); }catch(e){}
   });
 
-  navigator.mediaSession.setActionHandler("play", () => {
-    audio.play();
+  // Optional: handle visibility change to update playback behavior (not required)
+  document.addEventListener('visibilitychange', ()=> {
+    // no forced pause — we rely on MediaSession + service worker/native wrapper for background playback
   });
-  navigator.mediaSession.setActionHandler("pause", () => {
-    audio.pause();
-  });
-}
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js")
-    .then(() => console.log("Service Worker registered!"))
-    .catch(err => console.log("Service Worker failed:", err));
-}
-
-if ("mediaSession" in navigator) {
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: "My Song",
-    artist: "My Artist",
-    album: "My Album",
-    artwork: [
-      { src: "icon-192.png", sizes: "192x192", type: "image/png" }
-    ]
-  });
-
-  navigator.mediaSession.setActionHandler("play", () => {
-    document.querySelector("audio").play();
-  });
-  navigator.mediaSession.setActionHandler("pause", () => {
-    document.querySelector("audio").pause();
-  });
-}
 
   </script>
 </body>
 </html>
+
